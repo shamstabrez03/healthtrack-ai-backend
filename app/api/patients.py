@@ -83,12 +83,12 @@ def delete_family_member(
     if patient.relationship_type == "self":
         raise HTTPException(status_code=400, detail="Cannot delete your own profile")
 
-    # Clean up ChromaDB data for this patient
+    # Clean up Vector DB data for this patient
     try:
-        from app.rag.chroma import chroma_service
-        chroma_service.delete_patient_data(patient_id)
+        from app.rag.vector_service import vector_service
+        vector_service.delete_patient_data(patient_id, db=db)
     except Exception:
-        pass  # ChromaDB might not be initialized yet
+        pass
 
     # Delete patient (cascades to reports and observations via FK)
     PatientRepository.delete(db, patient_id, current_user.id)

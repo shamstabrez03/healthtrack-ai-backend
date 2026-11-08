@@ -4,7 +4,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from app.database.repositories import ObservationRepository, ReportRepository
-from app.rag.chroma import chroma_service
+from app.rag.vector_service import vector_service
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +39,15 @@ def get_report_chat_response(
     observations = ObservationRepository.get_for_report(db, report_id, patient_id)
     report = ReportRepository.get_by_id(db, report_id, patient_id)
 
-    # 2. Get relevant chunks from ChromaDB (scoped to this report)
-    chroma_results = chroma_service.search(question, patient_id, report_id=report_id, n_results=5)
+    # 2. Get relevant chunks from Vector DB (scoped to this report)
+    chroma_results = vector_service.search(
+        question,
+        patient_id,
+        report_id=report_id,
+        n_results=5,
+        api_key=api_key,
+        db=db,
+    )
 
     # 3. Build context
     context_parts = []
@@ -114,8 +121,14 @@ def get_history_chat_response(
     """Chat across the patient's medical history using hybrid retrieval."""
     import google.generativeai as genai
 
-    # 1. Search ChromaDB for relevant context
-    chroma_results = chroma_service.search(question, patient_id, n_results=10)
+    # 1. Search Vector DB for relevant context
+    chroma_results = vector_service.search(
+        question,
+        patient_id,
+        n_results=10,
+        api_key=api_key,
+        db=db,
+    )
 
     # 2. Check if question involves trends/comparisons — use structured DB
     trend_keywords = ["change", "trend", "compare", "previous", "increased", "decreased",

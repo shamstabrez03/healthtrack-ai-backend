@@ -156,10 +156,10 @@ class ReportProcessor:
             summary = self._generate_summary(extracted, len(obs_records))
             ReportRepository.update_metadata(self.db, report_id, summary=summary)
 
-            # Step 8: Index in ChromaDB
+            # Step 8: Index in Vector Database (Supabase pgvector / ChromaDB)
             try:
-                from app.rag.chroma import chroma_service
-                chroma_service.index_report(
+                from app.rag.vector_service import vector_service
+                vector_service.index_report(
                     report_id=report_id,
                     patient_id=patient_id,
                     pages=pages,
@@ -170,9 +170,10 @@ class ReportProcessor:
                     },
                     observations=validated_obs,
                     api_key=self._api_key,
+                    db=self.db,
                 )
             except Exception as e:
-                logger.warning(f"ChromaDB indexing failed (non-fatal): {e}")
+                logger.warning(f"Vector indexing failed (non-fatal): {e}")
 
             # Step 9: Mark complete
             needs_review = any(obs.get("needs_review") for obs in validated_obs)

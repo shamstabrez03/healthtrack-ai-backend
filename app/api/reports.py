@@ -206,12 +206,12 @@ def delete_report(
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    # 1. Delete ChromaDB data
+    # 1. Delete Vector DB data
     try:
-        from app.rag.chroma import chroma_service
-        chroma_service.delete_report_data(report_id)
+        from app.rag.vector_service import vector_service
+        vector_service.delete_report_data(report_id, db=db)
     except Exception:
-        pass  # ChromaDB might not be initialized
+        pass
 
     # 2. Delete the physical file
     try:

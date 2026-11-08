@@ -195,3 +195,34 @@ class Observation(Base):
     # Relationships
     report = relationship("Report", back_populates="observations")
     patient = relationship("Patient", back_populates="observations")
+
+
+from pgvector.sqlalchemy import Vector
+
+
+class ReportEmbedding(Base):
+    __tablename__ = "report_embeddings"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    report_id = Column(String, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    patient_id = Column(String, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+
+    chunk_text = Column(Text, nullable=False)
+    chunk_type = Column(String(50), default="page")  # "page" or "panel_summary"
+    page_number = Column(Integer, nullable=True)
+    panel = Column(String(200), nullable=True)
+
+    report_type = Column(String(100), nullable=True)
+    report_date = Column(String(50), nullable=True)
+    laboratory = Column(String(255), nullable=True)
+
+    embedding = Column(Vector(768), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_embeddings_patient_id", "patient_id"),
+        Index("ix_embeddings_report_id", "report_id"),
+    )
+
+    report = relationship("Report")
+    patient = relationship("Patient")
