@@ -279,3 +279,4 @@ class VectorService:
 
 
 vector_service = VectorService()
+

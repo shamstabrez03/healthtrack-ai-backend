@@ -6,7 +6,10 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database.session import init_db
 import os
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="HealthTrack AI",
@@ -60,7 +63,16 @@ app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads"
 def on_startup():
     """Initialize database tables on startup."""
     settings.ensure_directories()
-    init_db()
+    try:
+        init_db()
+    except Exception as e:
+        logger.warning(f"Database initialization warning (non-fatal): {e}")
+
+
+@app.get("/")
+@app.head("/")
+def root():
+    return {"status": "healthy", "app": "HealthTrack AI", "docs": "/docs"}
 
 
 @app.get("/api/health")

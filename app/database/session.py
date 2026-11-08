@@ -14,13 +14,18 @@ if db_url:
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 connect_args = {}
+engine_kwargs = {"echo": False}
 if db_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
+else:
+    connect_args = {"connect_timeout": 10}
+    engine_kwargs["pool_pre_ping"] = True
+    engine_kwargs["pool_recycle"] = 300
 
 engine = create_engine(
     db_url,
     connect_args=connect_args,
-    echo=False,
+    **engine_kwargs,
 )
 
 # Enable WAL mode and foreign keys for SQLite
@@ -51,4 +56,12 @@ def get_db():
 def init_db():
     """Create all tables."""
     from app.database import models  # noqa: F401 — ensure models are imported
+    if not db_url.startswith("sqlite"):
+        try:
+            with engine.connect() as conn:
+                from sqlalchemy import text
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                conn.commit()
+        except Exception:
+            pass
     Base.metadata.create_all(bind=engine)
