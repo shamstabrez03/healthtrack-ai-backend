@@ -16,6 +16,7 @@ from app.extraction.extractor import extract_report_data, classify_report_type
 from app.extraction.validator import validate_observations, determine_status
 from app.normalization.test_normalizer import normalize_test_name
 from app.api.auth import decrypt_api_key
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,10 @@ class ReportProcessor:
             self._api_key = decrypt_api_key(user.gemini_api_key_encrypted)
         if user and user.gemini_model:
             self._model_name = user.gemini_model
+
+        # Fall back to server environment GEMINI_API_KEY if user has not set one
+        if not self._api_key and settings.GEMINI_API_KEY:
+            self._api_key = settings.GEMINI_API_KEY
 
     def process(self, report_id: str, file_path: str, patient_id: str):
         """

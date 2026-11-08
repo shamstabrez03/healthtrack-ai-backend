@@ -81,13 +81,33 @@ async def upload_report(
     # Check for duplicates
     duplicate = ReportRepository.find_duplicate(db, patient_id, file_hash)
     if duplicate:
-        return ReportUploadResponse(
-            id=duplicate.id,
-            status="duplicate",
-            message="This report has already been uploaded",
-            is_duplicate=True,
-            duplicate_of_id=duplicate.id,
-        )
+        # Check if the duplicate was failed or interrupted with 0 observations
+        obs_count = ObservationRepository.get_observation_count_for_report(db, duplicate.id)
+        if duplicate.status == ReportStatus.FAILED.value or (
+            duplicate.status in [ReportStatus.UPLOADED.value, ReportStatus.PROCESSING.value, ReportStatus.EXTRACTING.value]
+            and obs_count == 0
+        ):
+            # Clean up old failed/stale draft and reprocess cleanly
+            try:
+                from app.rag.vector_service import vector_service
+                vector_service.delete_report_data(duplicate.id, db=db)
+            except Exception:
+                pass
+            try:
+                old_file = Path(duplicate.file_path)
+                if old_file.exists():
+                    old_file.unlink()
+            except Exception:
+                pass
+            ReportRepository.delete(db, duplicate.id, patient_id)
+        else:
+            return ReportUploadResponse(
+                id=duplicate.id,
+                status="duplicate",
+                message="This report has already been uploaded",
+                is_duplicate=True,
+                duplicate_of_id=duplicate.id,
+            )
 
     # Save file
     settings.ensure_directories()
@@ -129,6 +149,54 @@ def process_report_task(report_id: str, file_path: str, patient_id: str, user_id
         ReportRepository.update_status(db, report_id, ReportStatus.FAILED.value, str(e))
     finally:
         db.close()
+
+
+@router.post("/{report_id}/retry", response_model=ReportUploadResponse)
+def retry_report(
+    report_id: str,
+    patient_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retry processing a failed or incomplete report."""
+    patient = PatientRepository.get_by_id(db, patient_id, current_user.id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient profile not found")
+
+    report = ReportRepository.get_by_id(db, report_id, patient_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    file_path = Path(report.file_path)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail="Original file is not cached on server. Please upload the report again."
+        )
+
+    # Purge any partial vectors and observations before re-running
+    try:
+        from app.rag.vector_service import vector_service
+        vector_service.delete_report_data(report.id, db=db)
+    except Exception:
+        pass
+
+    try:
+        from app.database.models import Observation
+        db.query(Observation).filter(Observation.report_id == report_id).delete()
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    ReportRepository.update_status(db, report_id, ReportStatus.PROCESSING.value, "Retrying processing...")
+    background_tasks.add_task(process_report_task, report.id, str(file_path), patient_id, current_user.id)
+
+    return ReportUploadResponse(
+        id=report.id,
+        status="processing",
+        message="Report re-processing initiated.",
+    )
 
 
 @router.get("", response_model=ReportListResponse)
